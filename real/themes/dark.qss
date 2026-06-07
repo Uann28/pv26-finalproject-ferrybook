@@ -1,0 +1,75 @@
+QWidget{
+    background:#0f172a;
+    color:white;
+    font-family:'Segoe UI';
+    font-size:10pt;
+}
+
+#Sidebar{
+    background:#020617;
+}
+
+#SidebarLogo{
+    color:white;
+    font-size:20pt;
+    font-weight:700;
+    padding:20px;
+}
+
+QPushButton{
+    background:#3b82f6;
+    color:white;
+    border:none;
+    border-radius:12px;
+    padding:10px;
+}
+
+QPushButton:hover{
+    background:#2563eb;
+}
+
+#StatCard{
+    background:#1e293b;
+    border-radius:20px;
+}
+
+#CardIcon{
+    font-size:22pt;
+}
+
+#CardValue{
+    font-size:22pt;
+    font-weight:bold;
+}
+
+#DashboardTitle{
+    font-size:24pt;
+    font-weight:700;
+}
+
+QTableWidget{
+    background:#1e293b;
+    border-radius:15px;
+}
+
+QHeaderView::section{
+    background:#2563eb;
+    color:white;
+    border:none;
+    padding:8px;
+}
+
+#AICard{
+    background:#164e63;
+    border-radius:20px;
+    border:2px solid #06b6d4;
+}
+
+QLineEdit,
+QComboBox,
+QDateEdit{
+    background:#334155;
+    border:1px solid #475569;
+    border-radius:10px;
+    padding:8px;
+}
