@@ -223,41 +223,88 @@ class DashboardView(QWidget):
 
         data = TiketModel.pendapatan_7_hari()
 
-        self.chart.data = [
-            row["total"]
-            for row in data
-        ]
+        self.chart.data = data
 
         self.chart.update()
-        print(TiketModel.pendapatan_7_hari())
 
 class MiniChart(QWidget):
 
-    def __init__(self, data=None):
+    def __init__(self):
+
         super().__init__()
-        self.data = data or [20, 40, 60, 30, 80, 50, 90]
-        self.setMinimumHeight(120)
+
+        self.data = []
+
+        self.setMinimumHeight(220)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        w = self.width()
-        h = self.height()
 
         if not self.data:
             return
 
-        max_val = max(self.data)
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.Antialiasing
+        )
+
+        w = self.width()
+        h = self.height()
+
+        max_val = max(
+            item["total"]
+            for item in self.data
+        )
+
+        if max_val == 0:
+            return
+
         bar_width = w / len(self.data)
 
-        for i, val in enumerate(self.data):
-            bar_h = (val / max_val) * (h - 20)
+        for i, item in enumerate(self.data):
 
-            x = i * bar_width + 10
-            y = h - bar_h
+            nilai = item["total"]
 
-            painter.setBrush(QColor("#00D4FF"))
-            painter.setPen(Qt.NoPen)
+            tanggal = item["tanggal"][5:]
 
-            painter.drawRect(x, y, bar_width - 15, bar_h)
+            bar_h = (
+                nilai / max_val
+            ) * (h - 80)
+
+            x = i * bar_width + 20
+
+            y = h - bar_h - 40
+
+            # batang grafik
+            painter.setBrush(
+                QColor("#00D4FF")
+            )
+
+            painter.setPen(
+                Qt.NoPen
+            )
+
+            painter.drawRect(
+                int(x),
+                int(y),
+                int(bar_width - 25),
+                int(bar_h)
+            )
+
+            # nominal di atas batang
+            painter.setPen(
+                QColor("white")
+            )
+
+            painter.drawText(
+                int(x),
+                int(y - 10),
+                f"Rp {int(nilai):,}".replace(",", ".")
+            )
+
+            # tanggal di bawah batang
+            painter.drawText(
+                int(x),
+                h - 10,
+                tanggal
+            )
