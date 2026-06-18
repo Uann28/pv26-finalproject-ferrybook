@@ -165,3 +165,92 @@ class TiketModel:
         conn.close()
 
         return total
+    
+    @staticmethod
+    def pendapatan_7_hari():
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT 
+                DATE(tanggal_booking) as tanggal,
+                COALESCE(SUM(total_bayar), 0) as total
+            FROM tb_tiket
+            WHERE DATE(tanggal_booking) >= DATE('now', '-6 day')
+            GROUP BY DATE(tanggal_booking)
+            ORDER BY tanggal ASC
+        """)
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [
+            {
+                "tanggal": r[0],
+                "total": r[1]
+            }
+            for r in rows
+        ]
+    
+    @staticmethod
+    def lihat_semua():
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT *
+            FROM tb_tiket
+        """)
+
+        data = cursor.fetchall()
+
+        conn.close()
+
+        return data
+    
+    @staticmethod
+    def get_laporan(tgl_awal, tgl_akhir):
+
+        conn = get_connection()
+
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+
+                t.id_tiket,
+
+                t.nama_penumpang,
+
+                t.golongan,
+
+                t.nopol,
+
+                j.nama_kapal,
+
+                j.pelabuhan_asal,
+
+                j.pelabuhan_tujuan,
+
+                t.total_bayar
+
+            FROM tb_tiket t
+
+            JOIN tb_jadwal j
+            ON t.id_jadwal = j.id_jadwal
+
+            WHERE DATE(t.tanggal_booking)
+            BETWEEN ? AND ?
+
+            ORDER BY t.id_tiket DESC
+        """, (
+            tgl_awal,
+            tgl_akhir
+        ))
+
+        data = cursor.fetchall()
+
+        conn.close()
+
+        return data

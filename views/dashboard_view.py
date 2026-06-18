@@ -9,9 +9,12 @@ from PySide6.QtWidgets import (
     QPushButton
 )
 
-from views.widgets.stat_card import (
-    StatCard
-)
+from PySide6.QtCore import QTimer, QDateTime, Qt
+from PySide6.QtGui import QPainter, QColor
+from models.tiket_model import TiketModel
+
+from views.widgets.stat_card import StatCard
+
 
 
 class DashboardView(QWidget):
@@ -35,6 +38,10 @@ class DashboardView(QWidget):
         )
 
         layout.addWidget(title)
+
+        self.time_label = QLabel()
+        self.time_label.setObjectName("DashboardTime")
+        layout.addWidget(self.time_label)
 
         # ====================
         # KPI
@@ -79,6 +86,9 @@ class DashboardView(QWidget):
         )
 
         layout.addLayout(cards)
+
+        self.chart = MiniChart()
+        layout.addWidget(self.chart)
 
         # ====================
         # EXPORT
@@ -135,6 +145,18 @@ class DashboardView(QWidget):
             self.table_manifest
         )
 
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_time)
+        self.timer.start(1000)
+
+        self.update_time()
+
+        self.chart_timer = QTimer(self)
+        self.chart_timer.timeout.connect(self.update_chart)
+        self.chart_timer.start(10000)
+
+        self.update_chart()
+
     def set_dashboard_data(
         self,
         tiket,
@@ -190,3 +212,52 @@ class DashboardView(QWidget):
                         str(value)
                     )
                 )
+
+    def update_time(self):
+        now = QDateTime.currentDateTime()
+        self.time_label.setText(
+            now.toString("dddd, dd MMMM yyyy - HH:mm:ss")
+        )
+
+    def update_chart(self):
+
+        data = TiketModel.pendapatan_7_hari()
+
+        self.chart.data = [
+            row["total"]
+            for row in data
+        ]
+
+        self.chart.update()
+        print(TiketModel.pendapatan_7_hari())
+
+class MiniChart(QWidget):
+
+    def __init__(self, data=None):
+        super().__init__()
+        self.data = data or [20, 40, 60, 30, 80, 50, 90]
+        self.setMinimumHeight(120)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+
+        if not self.data:
+            return
+
+        max_val = max(self.data)
+        bar_width = w / len(self.data)
+
+        for i, val in enumerate(self.data):
+            bar_h = (val / max_val) * (h - 20)
+
+            x = i * bar_width + 10
+            y = h - bar_h
+
+            painter.setBrush(QColor("#00D4FF"))
+            painter.setPen(Qt.NoPen)
+
+            painter.drawRect(x, y, bar_width - 15, bar_h)
