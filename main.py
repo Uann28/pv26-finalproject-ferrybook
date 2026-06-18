@@ -17,6 +17,12 @@ from views.jadwal_view import JadwalView
 from views.reservasi_view import ReservasiView
 from views.ai_view import AIView
 
+from views.laporan_view import LaporanView
+
+from views.about_view import AboutView
+
+from views.user_view import UserView
+
 from views.widgets.sidebar import Sidebar
 
 from controllers.login_controller import (
@@ -139,6 +145,18 @@ class MainWindow(QMainWindow):
             AIView()
         )
 
+        self.laporan_view = (
+            LaporanView()
+        )
+
+        self.about_view = (
+            AboutView()
+        )
+
+        self.user_view = (
+            UserView()
+        )
+
         self.pages.addWidget(
             self.dashboard_view
         )
@@ -153,6 +171,18 @@ class MainWindow(QMainWindow):
 
         self.pages.addWidget(
             self.ai_view
+        )
+
+        self.pages.addWidget(
+            self.laporan_view
+        )
+
+        self.pages.addWidget(
+            self.about_view
+        )
+
+        self.pages.addWidget(
+            self.user_view
         )
 
         self.main_stack.addWidget(
@@ -185,6 +215,18 @@ class MainWindow(QMainWindow):
 
         self.sidebar.btn_ai.clicked.connect(
             self.buka_ai
+        )
+
+        self.sidebar.btn_laporan.clicked.connect(
+            self.buka_laporan
+        )
+
+        self.sidebar.btn_about.clicked.connect(
+            self.buka_about
+        )
+
+        self.sidebar.btn_user.clicked.connect(
+            self.buka_user
         )
 
         self.sidebar.btn_export.clicked.connect(
@@ -304,6 +346,10 @@ class MainWindow(QMainWindow):
         self.current_user = user
 
         role = user[2]
+
+        # Kirim id user yang sedang login ke user_view
+        # supaya tombol hapus diri sendiri dinonaktifkan
+        self.user_view.current_user_id = user[0]
 
         self.sidebar.set_role(
             role
@@ -772,6 +818,38 @@ class MainWindow(QMainWindow):
 
                 kapal[0]
             )
+
+    # ==================================
+    # USER MANAGEMENT
+    # ==================================
+
+    def buka_user(self):
+
+        self.user_view._refresh()
+
+        self.pages.setCurrentWidget(
+            self.user_view
+        )
+
+    # ==================================
+    # LAPORAN
+    # ==================================
+
+    def buka_laporan(self):
+
+        self.pages.setCurrentWidget(
+            self.laporan_view
+        )
+
+    # ==================================
+    # ABOUT
+    # ==================================
+
+    def buka_about(self):
+
+        self.pages.setCurrentWidget(
+            self.about_view
+        )
 
     # ==================================
     # EXPORT

@@ -60,6 +60,18 @@ class Sidebar(QFrame):
             "📑 Export"
         )
 
+        self.btn_user = QPushButton(
+            "👥 Manajemen User"
+        )
+
+        self.btn_laporan = QPushButton(
+            "📋 Laporan"
+        )
+
+        self.btn_about = QPushButton(
+            "ℹ️ Tentang"
+        )
+
         self.btn_theme = QPushButton(
             "🌙 Dark / Light"
         )
@@ -89,6 +101,18 @@ class Sidebar(QFrame):
         )
 
         layout.addWidget(
+            self.btn_user
+        )
+
+        layout.addWidget(
+            self.btn_laporan
+        )
+
+        layout.addWidget(
+            self.btn_about
+        )
+
+        layout.addWidget(
             self.btn_theme
         )
 
@@ -113,6 +137,12 @@ class Sidebar(QFrame):
 
             self.btn_export.show()
 
+            self.btn_user.show()
+
+            self.btn_laporan.show()
+
+            self.btn_about.show()
+
             self.btn_reservasi.hide()
 
         else:
@@ -120,6 +150,10 @@ class Sidebar(QFrame):
             self.btn_dashboard.show()
 
             self.btn_reservasi.show()
+
+            self.btn_laporan.show()
+
+            self.btn_about.show()
 
             self.btn_theme.show()
 
@@ -130,3 +164,5 @@ class Sidebar(QFrame):
             self.btn_ai.hide()
 
             self.btn_export.hide()
+
+            self.btn_user.hide()
