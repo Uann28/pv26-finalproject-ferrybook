@@ -1,310 +1,177 @@
-from PySide6.QtWidgets import (
-    QWidget,
-    QLabel,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QPushButton
-)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                               QFrame, QSizePolicy, QGridLayout, QScrollArea)
+from PySide6.QtCore import QTimer
+import models
+from utils import format_rupiah
+from utils.theme_manager import ThemeManager
+from datetime import datetime
 
-from PySide6.QtCore import QTimer, QDateTime, Qt
-from PySide6.QtGui import QPainter, QColor
-from models.tiket_model import TiketModel
+_HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+_BULAN = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+          "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
-from views.widgets.stat_card import StatCard
 
+def _tanggal_indonesia(d):
+    return f"{_HARI[d.weekday()]}, {d.day} {_BULAN[d.month]} {d.year}"
+
+
+# warna per tema
+_PALETTE = {
+    "dark": {
+        "accent": ["#00D4FF", "#00FF99", "#FFD700", "#FF6B6B"],
+        "date": "#A6ADC8", "muted": "#7A9BB5", "time": "#00D4FF",
+        "status": {"aktif": "#00FF99", "penuh": "#FF6B6B",
+                   "dibatalkan": "#A6ADC8", "selesai": "#7A9BB5"},
+    },
+    "light": {
+        "accent": ["#0277BD", "#2E7D32", "#EF6C00", "#C62828"],
+        "date": "#37474F", "muted": "#546E7A", "time": "#0277BD",
+        "status": {"aktif": "#2E7D32", "penuh": "#C62828",
+                   "dibatalkan": "#607D8B", "selesai": "#78909C"},
+    },
+}
+
+
+class StatCard(QFrame):
+    def __init__(self, label, value):
+        super().__init__()
+        self.setObjectName("stat_card")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        self.value_lbl = QLabel(str(value))
+        self.value_lbl.setObjectName("stat_card_value")
+        self.label_lbl = QLabel(label)
+        self.label_lbl.setObjectName("stat_card_label")
+        self.label_lbl.setStyleSheet("background: transparent;")
+        layout.addWidget(self.value_lbl)
+        layout.addWidget(self.label_lbl)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_value(self, v):
+        self.value_lbl.setText(str(v))
+
+    def set_accent(self, color):
+        self.value_lbl.setStyleSheet(
+            f"color: {color}; font-size: 26px; font-weight: bold; background: transparent;")
 
 
 class DashboardView(QWidget):
-
-    def __init__(self):
-
+    def __init__(self, user):
         super().__init__()
-
-        self.setup_ui()
-
-    def setup_ui(self):
-
-        layout = QVBoxLayout(self)
-
-        title = QLabel(
-            "🚢 Dashboard FerryBook"
-        )
-
-        title.setObjectName(
-            "DashboardTitle"
-        )
-
-        layout.addWidget(title)
-
-        self.time_label = QLabel()
-        self.time_label.setObjectName("DashboardTime")
-        layout.addWidget(self.time_label)
-
-        # ====================
-        # KPI
-        # ====================
-
-        cards = QHBoxLayout()
-
-        self.card_tiket = StatCard(
-            "🎟",
-            "Reservasi"
-        )
-
-        self.card_pendapatan = StatCard(
-            "💰",
-            "Pendapatan"
-        )
-
-        self.card_jadwal = StatCard(
-            "🚢",
-            "Kapal Aktif"
-        )
-
-        self.card_histori = StatCard(
-            "📈",
-            "Histori"
-        )
-
-        cards.addWidget(
-            self.card_tiket
-        )
-
-        cards.addWidget(
-            self.card_pendapatan
-        )
-
-        cards.addWidget(
-            self.card_jadwal
-        )
-
-        cards.addWidget(
-            self.card_histori
-        )
-
-        layout.addLayout(cards)
-
-        self.chart = MiniChart()
-        layout.addWidget(self.chart)
-
-        # ====================
-        # EXPORT
-        # ====================
-
-        self.btn_export = QPushButton(
-            "📑 Export Manifest"
-        )
-
-        layout.addWidget(
-            self.btn_export
-        )
-
-        # ====================
-        # MANIFEST
-        # ====================
-
-        lbl_manifest = QLabel(
-            "Manifest Penumpang"
-        )
-
-        layout.addWidget(
-            lbl_manifest
-        )
-
-        self.table_manifest = (
-            QTableWidget()
-        )
-
-        self.table_manifest.setColumnCount(
-            6
-        )
-
-        self.table_manifest.setHorizontalHeaderLabels([
-
-            "ID Tiket",
-
-            "Nama",
-
-            "Golongan",
-
-            "Kapal",
-
-            "Asal",
-
-            "Tujuan"
-        ])
-
-        self.table_manifest.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
-        )
-
-        layout.addWidget(
-            self.table_manifest
-        )
-
+        self.user = user
+        self._today_jadwals = []
+        self._build_ui()
+        self._refresh()
+        ThemeManager.instance().theme_changed.connect(lambda _: self._refresh())
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_time)
-        self.timer.start(1000)
+        self.timer.timeout.connect(self._refresh)
+        self.timer.start(30000)
 
-        self.update_time()
+    def _palette(self):
+        return _PALETTE.get(ThemeManager.instance().get_current_theme(), _PALETTE["dark"])
 
-        self.chart_timer = QTimer(self)
-        self.chart_timer.timeout.connect(self.update_chart)
-        self.chart_timer.start(10000)
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
 
-        self.update_chart()
+        hdr = QHBoxLayout()
+        titles = QVBoxLayout()
+        t = QLabel("Dashboard")
+        t.setObjectName("page_title")
+        s = QLabel(f"Selamat datang, {self.user['full_name']}")
+        s.setObjectName("page_subtitle")
+        titles.addWidget(t)
+        titles.addWidget(s)
+        hdr.addLayout(titles)
+        hdr.addStretch()
+        self.date_lbl = QLabel(_tanggal_indonesia(datetime.now()))
+        hdr.addWidget(self.date_lbl)
+        layout.addLayout(hdr)
 
-    def set_dashboard_data(
-        self,
-        tiket,
-        pendapatan,
-        jadwal,
-        histori
-    ):
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        self.card_jadwal = StatCard("Jadwal Hari Ini", "0")
+        self.card_penumpang = StatCard("Penumpang Hari Ini", "0")
+        self.card_tiket = StatCard("Tiket Diterbitkan", "0")
+        self.card_pendapatan = StatCard("Pendapatan Hari Ini", "Rp 0")
+        self._cards = [self.card_jadwal, self.card_penumpang,
+                       self.card_tiket, self.card_pendapatan]
+        for i, c in enumerate(self._cards):
+            grid.addWidget(c, 0, i)
+        layout.addLayout(grid)
 
-        self.card_tiket.set_value(
-            tiket
-        )
+        sched_frame = QFrame()
+        sched_frame.setObjectName("stat_card")
+        sched_layout = QVBoxLayout(sched_frame)
+        sched_hdr = QLabel(f"Jadwal Hari Ini — {_tanggal_indonesia(datetime.now())}")
+        sched_hdr.setObjectName("section_header")
+        sched_layout.addWidget(sched_hdr)
 
-        self.card_pendapatan.set_value(
-            f"Rp {pendapatan:,.0f}"
-        )
+        self.jadwal_list = QWidget()
+        self.jadwal_list_layout = QVBoxLayout(self.jadwal_list)
+        self.jadwal_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.jadwal_list_layout.setSpacing(6)
+        sched_scroll = QScrollArea()
+        sched_scroll.setWidgetResizable(True)
+        sched_scroll.setFrameShape(QFrame.NoFrame)
+        sched_scroll.setWidget(self.jadwal_list)
+        sched_layout.addWidget(sched_scroll)
+        layout.addWidget(sched_frame, 1)
 
-        self.card_jadwal.set_value(
-            jadwal
-        )
+    def _refresh(self):
+        pal = self._palette()
+        stats = models.get_statistik_dashboard()
+        self.card_jadwal.set_value(stats['total_jadwal_hari_ini'])
+        self.card_penumpang.set_value(stats['total_penumpang_hari_ini'])
+        self.card_tiket.set_value(stats['total_tiket_hari_ini'])
+        self.card_pendapatan.set_value(format_rupiah(stats['total_pendapatan_hari_ini']))
+        for c, color in zip(self._cards, pal['accent']):
+            c.set_accent(color)
+        self.date_lbl.setStyleSheet(f"color: {pal['date']}; font-size: 13px; font-weight: bold;")
+        self.date_lbl.setText(_tanggal_indonesia(datetime.now()))
 
-        self.card_histori.set_value(
-            histori
-        )
+        today = datetime.now().strftime("%Y-%m-%d")
+        self._today_jadwals = models.get_jadwal(tanggal=today)
+        self._render_jadwal(pal)
 
-    def load_manifest(
-        self,
-        data
-    ):
+    def _clear_layout(self, lay):
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
 
-        self.table_manifest.setRowCount(
-            0
-        )
-
-        for row_idx, row in enumerate(
-            data
-        ):
-
-            self.table_manifest.insertRow(
-                row_idx
-            )
-
-            for col_idx, value in enumerate(
-                row
-            ):
-
-                self.table_manifest.setItem(
-
-                    row_idx,
-
-                    col_idx,
-
-                    QTableWidgetItem(
-                        str(value)
-                    )
-                )
-
-    def update_time(self):
-        now = QDateTime.currentDateTime()
-        self.time_label.setText(
-            now.toString("dddd, dd MMMM yyyy - HH:mm:ss")
-        )
-
-    def update_chart(self):
-
-        data = TiketModel.pendapatan_7_hari()
-
-        self.chart.data = data
-
-        self.chart.update()
-
-class MiniChart(QWidget):
-
-    def __init__(self):
-
-        super().__init__()
-
-        self.data = []
-
-        self.setMinimumHeight(220)
-
-    def paintEvent(self, event):
-
-        if not self.data:
+    def _render_jadwal(self, pal):
+        self._clear_layout(self.jadwal_list_layout)
+        if not self._today_jadwals:
+            lbl = QLabel("Tidak ada jadwal hari ini.")
+            lbl.setStyleSheet(f"color: {pal['muted']}; padding: 8px; background: transparent;")
+            self.jadwal_list_layout.addWidget(lbl)
+            self.jadwal_list_layout.addStretch()
             return
 
-        painter = QPainter(self)
-
-        painter.setRenderHint(
-            QPainter.Antialiasing
-        )
-
-        w = self.width()
-        h = self.height()
-
-        max_val = max(
-            item["total"]
-            for item in self.data
-        )
-
-        if max_val == 0:
-            return
-
-        bar_width = w / len(self.data)
-
-        for i, item in enumerate(self.data):
-
-            nilai = item["total"]
-
-            tanggal = item["tanggal"][5:]
-
-            bar_h = (
-                nilai / max_val
-            ) * (h - 80)
-
-            x = i * bar_width + 20
-
-            y = h - bar_h - 40
-
-            # batang grafik
-            painter.setBrush(
-                QColor("#00D4FF")
-            )
-
-            painter.setPen(
-                Qt.NoPen
-            )
-
-            painter.drawRect(
-                int(x),
-                int(y),
-                int(bar_width - 25),
-                int(bar_h)
-            )
-
-            # nominal di atas batang
-            painter.setPen(
-                QColor("white")
-            )
-
-            painter.drawText(
-                int(x),
-                int(y - 10),
-                f"Rp {int(nilai):,}".replace(",", ".")
-            )
-
-            # tanggal di bawah batang
-            painter.drawText(
-                int(x),
-                h - 10,
-                tanggal
-            )
+        for j in self._today_jadwals:
+            row = QFrame()
+            row.setObjectName("info_row")
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(12, 8, 12, 8)
+            time_lbl = QLabel(j['jam_berangkat'])
+            time_lbl.setStyleSheet(f"color: {pal['time']}; font-weight: bold; font-size: 13px; background: transparent;")
+            route_lbl = QLabel(f"{j['asal']} → {j['tujuan']}")
+            route_lbl.setStyleSheet("background: transparent; font-weight: bold;")
+            kapal_lbl = QLabel(j['nama_kapal'])
+            kapal_lbl.setStyleSheet(f"color: {pal['muted']}; font-size: 11px; background: transparent;")
+            sisa_lbl = QLabel(f"Sisa kursi: {j['sisa']}")
+            sisa_lbl.setStyleSheet(f"color: {pal['muted']}; font-size: 11px; background: transparent;")
+            st_color = pal['status'].get(j['status'], pal['muted'])
+            st_lbl = QLabel(j['status'].upper())
+            st_lbl.setStyleSheet(f"color: {st_color}; font-size: 11px; font-weight: bold; background: transparent;")
+            rl.addWidget(time_lbl)
+            rl.addWidget(route_lbl)
+            rl.addWidget(kapal_lbl)
+            rl.addStretch()
+            rl.addWidget(sisa_lbl)
+            rl.addWidget(st_lbl)
+            self.jadwal_list_layout.addWidget(row)
+        self.jadwal_list_layout.addStretch()

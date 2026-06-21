@@ -1,226 +1,169 @@
-from PySide6.QtWidgets import (
-    QWidget,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QHBoxLayout,
-    QFrame,
-    QHeaderView,
-    QAbstractItemView,
-    QComboBox,
-    QDateEdit,
-    QFileDialog,
-    QMessageBox
-)
-
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                               QPushButton, QTableWidget, QTableWidgetItem,
+                               QFrame, QHeaderView, QAbstractItemView,
+                               QComboBox, QDateEdit, QLineEdit, QFileDialog,
+                               QMessageBox, QGroupBox, QGridLayout)
 from PySide6.QtCore import Qt, QDate
+import models
+from utils import format_rupiah, cetak_laporan_manifes_pdf
+from utils.theme_manager import style_calendar
+import csv, os
 
-from models.tiket_model import TiketModel
-from models.jadwal_model import JadwalModel
-from utils.laporan_pdf import cetak_laporan_pdf
-
-import csv
-
-
-class LaporanView(QWidget):
-
-    def __init__(self):
-
+class LaporanManifesView(QWidget):
+    def __init__(self, user: dict):
         super().__init__()
-
+        self.user = user
         self._data = []
+        self._build_ui()
 
-        self.setup_ui()
-
-    def setup_ui(self):
-
+    def _build_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
-        title = QLabel("📋 Laporan Manifest Penumpang")
-        title.setObjectName("DashboardTitle")
-        layout.addWidget(title)
+        hdr = QHBoxLayout()
+        titles = QVBoxLayout()
+        t = QLabel("Laporan Manifes"); t.setObjectName("page_title")
+        s = QLabel("Rekap data penumpang dan pendapatan operasional"); s.setObjectName("page_subtitle")
+        titles.addWidget(t); titles.addWidget(s)
+        hdr.addLayout(titles); hdr.addStretch()
+        layout.addLayout(hdr)
 
-        # ==================================
-        # FILTER
-        # ==================================
+        filter_frame = QFrame(); filter_frame.setObjectName("toolbar_frame")
+        f_layout = QHBoxLayout(filter_frame); f_layout.setContentsMargins(12, 8, 12, 8); f_layout.setSpacing(10)
+        f_layout.addWidget(QLabel("Dari:"))
+        self.tgl_awal = QDateEdit(); self.tgl_awal.setCalendarPopup(True)
+        self.tgl_awal.setDate(QDate.currentDate().addDays(-7)); self.tgl_awal.setFixedHeight(32)
+        style_calendar(self.tgl_awal)
+        f_layout.addWidget(self.tgl_awal)
+        f_layout.addWidget(QLabel("Sampai:"))
+        self.tgl_akhir = QDateEdit(); self.tgl_akhir.setCalendarPopup(True)
+        self.tgl_akhir.setDate(QDate.currentDate()); self.tgl_akhir.setFixedHeight(32)
+        style_calendar(self.tgl_akhir)
+        f_layout.addWidget(self.tgl_akhir)
+        f_layout.addWidget(QLabel("Rute:"))
+        self.rute_combo = QComboBox(); self.rute_combo.setFixedHeight(32)
+        self.rute_combo.addItem("Semua Rute", None)
+        for r in models.get_all_rute():
+            self.rute_combo.addItem(f"{r['asal']} → {r['tujuan']}", r['id'])
+        f_layout.addWidget(self.rute_combo)
+        cari_btn = QPushButton("Tampilkan"); cari_btn.setObjectName("btn_primary"); cari_btn.setFixedHeight(32)
+        cari_btn.clicked.connect(self._refresh)
+        f_layout.addWidget(cari_btn)
+        f_layout.addStretch()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Cari nama / no. tiket / kapal...")
+        self.search_input.setFixedHeight(32)
+        self.search_input.setMinimumWidth(220)
+        self.search_input.textChanged.connect(self._filter_tabel)
+        f_layout.addWidget(self.search_input)
+        layout.addWidget(filter_frame)
 
-        filter_card = QFrame()
-        filter_card.setObjectName("StatCard")
-        filter_layout = QHBoxLayout(filter_card)
-
-        filter_layout.addWidget(QLabel("Dari:"))
-        self.tgl_awal = QDateEdit()
-        self.tgl_awal.setCalendarPopup(True)
-        self.tgl_awal.setDate(QDate.currentDate().addDays(-7))
-        self.tgl_awal.setFixedHeight(32)
-        filter_layout.addWidget(self.tgl_awal)
-
-        filter_layout.addWidget(QLabel("Sampai:"))
-        self.tgl_akhir = QDateEdit()
-        self.tgl_akhir.setCalendarPopup(True)
-        self.tgl_akhir.setDate(QDate.currentDate())
-        self.tgl_akhir.setFixedHeight(32)
-        filter_layout.addWidget(self.tgl_akhir)
-
-        self.btn_tampilkan = QPushButton("🔍 Tampilkan")
-        self.btn_tampilkan.setFixedHeight(32)
-        self.btn_tampilkan.clicked.connect(self._refresh)
-        filter_layout.addWidget(self.btn_tampilkan)
-
-        filter_layout.addStretch()
-        layout.addWidget(filter_card)
-
-        # ==================================
-        # TABEL
-        # ==================================
+        sum_row = QHBoxLayout(); sum_row.setSpacing(12)
+        self.sum_cards = {}
+        for key, label, color in [
+            ("tiket","Total Tiket","#00D4FF"),
+            ("penumpang","Total Penumpang","#00FF99"),
+            ("kendaraan","Total Kendaraan","#FFD700"),
+            ("pendapatan","Total Pendapatan","#FF6B6B"),
+        ]:
+            card = QFrame(); card.setObjectName("stat_card")
+            cl = QVBoxLayout(card); cl.setContentsMargins(14,14,14,14)
+            val = QLabel("0"); val.setStyleSheet(f"color:{color};font-size:22px;font-weight:bold;background:transparent;")
+            lbl = QLabel(label); lbl.setObjectName("stat_card_label"); lbl.setStyleSheet("background:transparent;")
+            cl.addWidget(val); cl.addWidget(lbl)
+            self.sum_cards[key] = val
+            sum_row.addWidget(card)
+        layout.addLayout(sum_row)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels([
-            "ID Tiket",
-            "Nama",
-            "Golongan",
-            "No. Pol",
-            "Kapal",
-            "Asal",
-            "Tujuan",
-            "Total Bayar"
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
-        )
-        self.table.setEditTriggers(
-            QAbstractItemView.NoEditTriggers
-        )
-        self.table.setSelectionBehavior(
-            QAbstractItemView.SelectRows
-        )
+        self.table.setColumnCount(10)
+        self.table.setHorizontalHeaderLabels(["No. Tiket","Nama","No. ID","Rute","Kapal","Tanggal","Jam","Tipe","Jml","Total"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.verticalHeader().setVisible(False)
+        self.table.setSortingEnabled(True)
         layout.addWidget(self.table)
 
-        # ==================================
-        # RINGKASAN + EXPORT
-        # ==================================
-
-        bottom = QHBoxLayout()
-
-        self.lbl_total = QLabel("Total: 0 tiket  |  Pendapatan: Rp 0")
-        self.lbl_total.setObjectName("CardValue")
-        bottom.addWidget(self.lbl_total)
-
-        bottom.addStretch()
-
-        self.btn_csv = QPushButton("📄 Ekspor CSV")
-        self.btn_csv.clicked.connect(self._export_csv)
-        bottom.addWidget(self.btn_csv)
-
-        self.btn_pdf = QPushButton("📑 Ekspor PDF")
-        self.btn_pdf.clicked.connect(self._export_pdf)
-        bottom.addWidget(self.btn_pdf)
-
-        layout.addLayout(bottom)
+        exp_bar = QHBoxLayout(); exp_bar.addStretch()
+        csv_btn = QPushButton("Ekspor CSV"); csv_btn.setObjectName("btn_warning"); csv_btn.setFixedHeight(34)
+        csv_btn.clicked.connect(self._export_csv)
+        pdf_btn = QPushButton("Ekspor PDF"); pdf_btn.setObjectName("btn_primary"); pdf_btn.setFixedHeight(34)
+        pdf_btn.clicked.connect(self._export_pdf)
+        exp_bar.addWidget(csv_btn); exp_bar.addWidget(pdf_btn)
+        layout.addLayout(exp_bar)
 
     def _refresh(self):
-
         tgl_awal = self.tgl_awal.date().toString("yyyy-MM-dd")
         tgl_akhir = self.tgl_akhir.date().toString("yyyy-MM-dd")
+        rute_id = self.rute_combo.currentData()
+        self._data = models.get_laporan_manifes(tgl_awal, tgl_akhir, rute_id)
 
-        self._data = TiketModel.get_laporan(tgl_awal, tgl_akhir)
-
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(self._data))
-
-        total_bayar = 0
-
-        for i, row in enumerate(self._data):
-
-            vals = [
-                str(row[0]),  # id_tiket
-                row[1],       # nama_penumpang
-                row[2],       # golongan
-                row[3] or "-",# nopol
-                row[4],       # nama_kapal
-                row[5],       # asal
-                row[6],       # tujuan
-                f"Rp {int(row[7]):,}".replace(",", ".")  # total_bayar
-            ]
-
+        total_pend = 0; total_p = 0; total_k = 0
+        for i, t in enumerate(self._data):
+            vals = [t['nomor_tiket'], t['nama_penumpang'], t['no_identitas'],
+                    f"{t['asal']}→{t['tujuan']}", t['nama_kapal'], t['tanggal'],
+                    t['jam_berangkat'], t['tipe_tiket'].capitalize(),
+                    str(t['jumlah_penumpang']), format_rupiah(t['total_harga'])]
             for c, v in enumerate(vals):
-                item = QTableWidgetItem(v)
-                item.setTextAlignment(Qt.AlignCenter)
+                item = QTableWidgetItem(v); item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i, c, item)
-
             self.table.setRowHeight(i, 34)
-            total_bayar += row[7]
+            total_pend += t['total_harga']
+            if t['tipe_tiket'] == 'penumpang': total_p += t['jumlah_penumpang']
+            else: total_k += 1
 
-        self.lbl_total.setText(
-            f"Total: {len(self._data)} tiket  |  "
-            f"Pendapatan: Rp {int(total_bayar):,}".replace(",", ".")
-        )
+        self.table.setSortingEnabled(True)
+        self._filter_tabel(self.search_input.text())
+
+        self.sum_cards['tiket'].setText(str(len(self._data)))
+        self.sum_cards['penumpang'].setText(str(total_p))
+        self.sum_cards['kendaraan'].setText(str(total_k))
+        self.sum_cards['pendapatan'].setText(format_rupiah(total_pend))
+
+    # cari di tabel
+    def _filter_tabel(self, teks):
+        teks = (teks or "").strip().lower()
+        for r in range(self.table.rowCount()):
+            cocok = False
+            for c in range(self.table.columnCount()):
+                item = self.table.item(r, c)
+                if item and teks in item.text().lower():
+                    cocok = True
+                    break
+            self.table.setRowHidden(r, bool(teks) and not cocok)
 
     def _export_csv(self):
-
         if not self._data:
-            QMessageBox.warning(
-                self, "Data Kosong",
-                "Tidak ada data untuk diekspor."
-            )
-            return
-
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Simpan CSV", "laporan_manifest.csv", "CSV (*.csv)"
-        )
-
-        if not path:
-            return
-
+            QMessageBox.warning(self, "Data Kosong", "Tidak ada data untuk diekspor."); return
+        path, _ = QFileDialog.getSaveFileName(self, "Ekspor CSV", "manifes.csv", "CSV (*.csv)")
+        if not path: return
         try:
-            with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    "ID Tiket", "Nama", "Golongan", "No. Polisi",
-                    "Kapal", "Asal", "Tujuan", "Total Bayar"
-                ])
-                for row in self._data:
-                    writer.writerow(row[:8])
-            QMessageBox.information(
-                self, "Sukses", f"CSV disimpan ke:\n{path}"
-            )
+            with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.DictWriter(f, fieldnames=['nomor_tiket','nama_penumpang','no_identitas',
+                    'asal','tujuan','nama_kapal','tanggal','jam_berangkat','tipe_tiket',
+                    'jumlah_penumpang','total_harga'])
+                writer.writeheader()
+                for t in self._data:
+                    writer.writerow({k: t.get(k,'') for k in writer.fieldnames})
+            QMessageBox.information(self, "Sukses", f"Data diekspor ke:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def _export_pdf(self):
-
         if not self._data:
-            QMessageBox.warning(
-                self, "Data Kosong",
-                "Tidak ada data untuk diekspor."
-            )
-            return
-
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Simpan PDF", "laporan_manifest.pdf", "PDF (*.pdf)"
-        )
-
-        if not path:
-            return
-
+            QMessageBox.warning(self, "Data Kosong", "Tidak ada data untuk diekspor."); return
+        path, _ = QFileDialog.getSaveFileName(self, "Ekspor PDF", "manifes.pdf", "PDF (*.pdf)")
+        if not path: return
         tgl_a = self.tgl_awal.date().toString("dd/MM/yyyy")
         tgl_b = self.tgl_akhir.date().toString("dd/MM/yyyy")
-
-        ok = cetak_laporan_pdf(
-            self._data,
-            f"Periode: {tgl_a} s/d {tgl_b}",
-            path
-        )
-
+        judul = f"Periode: {tgl_a} s/d {tgl_b}"
+        ok = cetak_laporan_manifes_pdf(self._data, judul, path)
         if ok:
-            QMessageBox.information(
-                self, "Sukses", f"PDF disimpan ke:\n{path}"
-            )
+            QMessageBox.information(self, "Sukses", f"Laporan PDF disimpan ke:\n{path}")
         else:
-            QMessageBox.critical(
-                self, "Error",
-                "Gagal membuat PDF. Pastikan reportlab terinstal."
-            )
+            QMessageBox.critical(self, "Error", "Gagal membuat PDF.")

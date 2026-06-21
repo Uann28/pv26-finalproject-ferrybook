@@ -1,261 +1,129 @@
-from PySide6.QtWidgets import (
-    QWidget,
-    QLabel,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QHBoxLayout,
-    QFormLayout,
-    QFrame,
-    QHeaderView,
-    QAbstractItemView,
-    QComboBox,
-    QLineEdit,
-    QDialog,
-    QMessageBox
-)
-
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                               QPushButton, QTableWidget, QTableWidgetItem,
+                               QFrame, QDialog, QFormLayout, QLineEdit,
+                               QComboBox, QMessageBox, QHeaderView, QAbstractItemView)
 from PySide6.QtCore import Qt
-
-from controllers.user_controller import UserController
-
+import models
 
 class UserDialog(QDialog):
-    """Dialog tambah / edit user."""
-
     def __init__(self, parent=None, user=None):
-
         super().__init__(parent)
-
-        self.user = user  # tuple (id_user, username, role) atau None
-
-        self.setWindowTitle(
-            "Tambah User" if not user else "Edit User"
-        )
-
-        self.setMinimumWidth(360)
-
+        self.user = user
+        self.setWindowTitle("Tambah User" if not user else "Edit User")
+        self.setMinimumWidth(380)
         self._build_ui()
-
-        if user:
-            self._populate(user)
+        if user: self._populate(user)
 
     def _build_ui(self):
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-
-        title = QLabel(
-            "Data Pengguna"
-        )
-        title.setObjectName("DashboardTitle")
+        layout = QVBoxLayout(self); layout.setContentsMargins(20,20,20,20); layout.setSpacing(12)
+        title = QLabel("Data Pengguna"); title.setObjectName("section_header")
         layout.addWidget(title)
-
-        form = QFormLayout()
-        form.setSpacing(10)
-
-        self.txt_username = QLineEdit()
-        self.txt_username.setFixedHeight(36)
-        self.txt_username.setPlaceholderText("Username...")
-
-        self.txt_password = QLineEdit()
-        self.txt_password.setEchoMode(QLineEdit.Password)
-        self.txt_password.setFixedHeight(36)
-        self.txt_password.setPlaceholderText(
-            "Password..." if not self.user
-            else "Kosongkan jika tidak diubah"
-        )
-
-        self.cb_role = QComboBox()
-        self.cb_role.setFixedHeight(36)
-        self.cb_role.addItems(["Super Admin", "Petugas Loket"])
-
-        form.addRow("Username *", self.txt_username)
-        form.addRow("Password", self.txt_password)
-        form.addRow("Role *", self.cb_role)
-
+        form = QFormLayout(); form.setSpacing(10)
+        self.username_input = QLineEdit(); self.username_input.setFixedHeight(36)
+        self.nama_input = QLineEdit(); self.nama_input.setFixedHeight(36)
+        self.pass_input = QLineEdit(); self.pass_input.setEchoMode(QLineEdit.Password)
+        self.pass_input.setPlaceholderText("Kosongkan jika tidak diubah"); self.pass_input.setFixedHeight(36)
+        self.role_combo = QComboBox(); self.role_combo.setFixedHeight(36)
+        self.role_combo.addItems(["admin","petugas"])
+        form.addRow("Username *", self.username_input)
+        form.addRow("Nama Lengkap *", self.nama_input)
+        form.addRow("Password", self.pass_input)
+        form.addRow("Role *", self.role_combo)
         layout.addLayout(form)
-
-        # Tombol
-        btns = QHBoxLayout()
-        btns.addStretch()
-
-        btn_batal = QPushButton("Batal")
-        btn_batal.clicked.connect(self.reject)
-
-        self.btn_simpan = QPushButton("💾 Simpan")
-        self.btn_simpan.clicked.connect(self._simpan)
-
-        btns.addWidget(btn_batal)
-        btns.addWidget(self.btn_simpan)
+        btns = QHBoxLayout(); btns.addStretch()
+        cancel_btn = QPushButton("Batal"); cancel_btn.clicked.connect(self.reject)
+        save_btn = QPushButton("Simpan"); save_btn.setObjectName("btn_primary"); save_btn.clicked.connect(self._save)
+        btns.addWidget(cancel_btn); btns.addWidget(save_btn)
         layout.addLayout(btns)
 
-    def _populate(self, user):
+    def _populate(self, u):
+        self.username_input.setText(u['username']); self.username_input.setEnabled(False)
+        self.nama_input.setText(u['full_name'])
+        idx = self.role_combo.findText(u['role'])
+        if idx >= 0: self.role_combo.setCurrentIndex(idx)
 
-        self.txt_username.setText(user[1])
-        self.txt_username.setEnabled(False)  # username tidak bisa diubah
-
-        idx = self.cb_role.findText(user[2])
-        if idx >= 0:
-            self.cb_role.setCurrentIndex(idx)
-
-    def _simpan(self):
-
-        role = self.cb_role.currentText()
-        password = self.txt_password.text()
-
+    def _save(self):
+        username = self.username_input.text().strip()
+        nama = self.nama_input.text().strip()
+        if not nama: QMessageBox.warning(self, "Validasi", "Nama lengkap wajib diisi."); return
         if self.user:
-            # Mode edit
-            ok, msg = UserController.update(
-                self.user[0],
-                role,
-                password
-            )
+            ok, msg = models.update_user(self.user['id'], nama, self.role_combo.currentText(),
+                                          self.pass_input.text() or None)
         else:
-            # Mode tambah
-            username = self.txt_username.text().strip()
-            if not password:
-                QMessageBox.warning(
-                    self, "Validasi",
-                    "Password wajib diisi untuk user baru."
-                )
-                return
-            ok, msg = UserController.tambah(username, password, role)
-
-        if ok:
-            self.accept()
-        else:
-            QMessageBox.critical(self, "Error", msg)
+            pw = self.pass_input.text()
+            if not username or not pw:
+                QMessageBox.warning(self, "Validasi", "Username dan password wajib diisi."); return
+            ok, msg = models.create_user(username, pw, nama, self.role_combo.currentText())
+        if ok: self.accept()
+        else: QMessageBox.critical(self, "Error", msg)
 
 
-class UserView(QWidget):
-
-    def __init__(self):
-
+class ManajemenUserView(QWidget):
+    def __init__(self, user: dict):
         super().__init__()
+        self.current_user = user
+        self._build_ui()
+        self._refresh()
 
-        self.current_user_id = None  # diset dari main setelah login
-
-        self.setup_ui()
-
-    def setup_ui(self):
-
-        layout = QVBoxLayout(self)
-
-        # ==================================
-        # HEADER
-        # ==================================
-
+    def _build_ui(self):
+        layout = QVBoxLayout(self); layout.setContentsMargins(24,24,24,24); layout.setSpacing(16)
         hdr = QHBoxLayout()
-
-        title = QLabel("👥 Manajemen Pengguna")
-        title.setObjectName("DashboardTitle")
-        hdr.addWidget(title)
-
-        hdr.addStretch()
-
-        self.btn_tambah = QPushButton("+ Tambah User")
-        self.btn_tambah.setFixedHeight(36)
-        self.btn_tambah.clicked.connect(self._tambah)
-        hdr.addWidget(self.btn_tambah)
-
+        titles = QVBoxLayout()
+        t = QLabel("Manajemen Pengguna"); t.setObjectName("page_title")
+        s = QLabel("Kelola akun admin dan petugas loket"); s.setObjectName("page_subtitle")
+        titles.addWidget(t); titles.addWidget(s); hdr.addLayout(titles); hdr.addStretch()
+        add_btn = QPushButton("+ Tambah User"); add_btn.setObjectName("btn_primary")
+        add_btn.setFixedHeight(36); add_btn.clicked.connect(self._add); hdr.addWidget(add_btn)
         layout.addLayout(hdr)
 
-        # ==================================
-        # TABEL
-        # ==================================
-
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels([
-            "ID", "Username", "Role", "Aksi"
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["ID","Username","Nama Lengkap","Role","Aksi"])
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.setColumnWidth(4, 200)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.verticalHeader().setVisible(False)
-
+        self.table.hideColumn(0)
         layout.addWidget(self.table)
 
-        self._refresh()
-
     def _refresh(self):
-
-        rows = UserController.get_all()
+        rows = models.get_all_users()
         self.table.setRowCount(len(rows))
-
         for i, u in enumerate(rows):
+            vals = [str(u['id']), u['username'], u['full_name']]
+            for c, v in enumerate(vals):
+                item = QTableWidgetItem(v); item.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(i, c, item)
+            role_item = QTableWidgetItem(u['role'].capitalize())
+            role_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 3, role_item)
+            btn_f = QWidget(); btn_f.setObjectName("action_cell")
+            btn_l = QHBoxLayout(btn_f); btn_l.setContentsMargins(2, 2, 2, 2); btn_l.setSpacing(6)
+            edit_btn = QPushButton("Edit"); edit_btn.setObjectName("btn_warning")
+            edit_btn.setFixedHeight(32); edit_btn.setCursor(Qt.PointingHandCursor)
+            edit_btn.clicked.connect(lambda _, row=u: self._edit(row))
+            del_btn = QPushButton("Hapus"); del_btn.setObjectName("btn_danger")
+            del_btn.setFixedHeight(32); del_btn.setCursor(Qt.PointingHandCursor)
+            del_btn.clicked.connect(lambda _, uid=u['id']: self._delete(uid))
+            if u['id'] == self.current_user['id']: del_btn.setEnabled(False)
+            btn_l.addWidget(edit_btn); btn_l.addWidget(del_btn)
+            self.table.setCellWidget(i, 4, btn_f)
+            self.table.setRowHeight(i, 54)
 
-            id_user, username, role = u
-
-            self.table.setItem(i, 0, QTableWidgetItem(str(id_user)))
-            self.table.setItem(i, 1, QTableWidgetItem(username))
-
-            role_lbl = QLabel(role)
-            role_lbl.setAlignment(Qt.AlignCenter)
-            color = "#00D4FF" if role == "Super Admin" else "#FFD700"
-            role_lbl.setStyleSheet(
-                f"color:{color}; font-weight:bold; padding:4px;"
-            )
-            self.table.setCellWidget(i, 2, role_lbl)
-
-            # Tombol aksi
-            btn_frame = QFrame()
-            btn_layout = QHBoxLayout(btn_frame)
-            btn_layout.setContentsMargins(4, 2, 4, 2)
-            btn_layout.setSpacing(4)
-
-            btn_edit = QPushButton("✏ Edit")
-            btn_edit.setFixedHeight(28)
-            btn_edit.clicked.connect(
-                lambda _, row=u: self._edit(row)
-            )
-
-            btn_hapus = QPushButton("🗑 Hapus")
-            btn_hapus.setFixedHeight(28)
-            btn_hapus.clicked.connect(
-                lambda _, uid=id_user: self._hapus(uid)
-            )
-
-            # Tidak bisa hapus diri sendiri
-            if self.current_user_id and id_user == self.current_user_id:
-                btn_hapus.setEnabled(False)
-                btn_hapus.setToolTip("Tidak bisa menghapus akun sendiri")
-
-            btn_layout.addWidget(btn_edit)
-            btn_layout.addWidget(btn_hapus)
-            self.table.setCellWidget(i, 3, btn_frame)
-            self.table.setRowHeight(i, 44)
-
-    def _tambah(self):
-
+    def _add(self):
         dlg = UserDialog(self)
-        if dlg.exec():
-            self._refresh()
+        if dlg.exec(): self._refresh()
 
-    def _edit(self, user):
+    def _edit(self, u):
+        dlg = UserDialog(self, u)
+        if dlg.exec(): self._refresh()
 
-        dlg = UserDialog(self, user)
-        if dlg.exec():
-            self._refresh()
-
-    def _hapus(self, id_user):
-
-        reply = QMessageBox.question(
-            self, "Konfirmasi",
-            "Hapus user ini?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-
+    def _delete(self, uid):
+        reply = QMessageBox.question(self, "Konfirmasi", "Hapus user ini?", QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
-
-            ok, msg = UserController.delete(id_user)
-
-            if ok:
-                self._refresh()
-            else:
-                QMessageBox.critical(self, "Error", msg)
+            ok, msg = models.delete_user(uid)
+            if ok: self._refresh()
+            else: QMessageBox.critical(self, "Error", msg)
